@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>3D Christmas Tree</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "Segoe UI", sans-serif;
+      background: radial-gradient(circle at top, #102542 0%, #050811 55%, #010308 100%);
+      color: #f9fafb;
+    }
+    #app {
+      position: fixed;
+      inset: 0;
+    }
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding-top: 32px;
+      pointer-events: none;
+      text-align: center;
+      background: linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0.55),
+        rgba(0, 0, 0, 0.15) 40%,
+        transparent 65%
+      );
+    }
+    #title {
+      font-size: clamp(2.2rem, 2.8vw, 3rem);
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    #subtitle {
+      font-size: 0.95rem;
+      opacity: 0.9;
+      max-width: 480px;
+      line-height: 1.6;
+    }
+    #hint {
+      position: absolute;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.8rem;
+      opacity: 0.7;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="overlay">
+      <div id="title">Winter Lights</div>
+      <div id="subtitle">
+        Drag to orbit · Scroll to zoom · 3D Christmas tree with ornaments, garlands, lights & snow.
+      </div>
+      <div id="hint">Tip: zoom in to see the star & reflections ✨</div>
+    </div>
+  </div>
+
+  <!-- Three.js + OrbitControls (non-module, works with file://) -->
+  <script src="https://unpkg.com/three@0.146.0/build/three.min.js"></script>
+  <script src="https://unpkg.com/three@0.146.0/examples/js/controls/OrbitControls.js"></script>
+
+  <script>
+    let renderer, scene, camera, controls;
+    let treeGroup, snowPoints;
+    let timeStart = performance.now();
+
+    init();
+    animate();
+
+    function init() {
+      const container = document.getElementById("app");
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.1;
+      container.appendChild(renderer.domElement);
+
+      // Scene
+      scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x050812, 0.045);
+
+      // Camera
+      camera = new THREE.PerspectiveCamera(
+        45,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        200
+      );
+      camera.position.set(7, 6, 10);
+
+      // Controls
+      controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 2.5, 0);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.minDistance = 5;
+      controls.maxDistance = 25;
+      controls.maxPolarAngle = Math.PI * 0.48;
+
+      addLights();
+      addGround();
+      addBackgroundGlow();
+      addTree();
+      addSnow();
+
+      window.addEventListener("resize", onWindowResize, false);
+    }
+
+    function addLights() {
+      const ambient = new THREE.AmbientLight(0xffffff, 0.45);
+      scene.add(ambient);
+
+      const dirLight = new THREE.DirectionalLight(0xbfdcff, 1.0);
+      dirLight.position.set(6, 12, 8);
+      scene.add(dirLight);
+
+      const colors = [0xfff3b0, 0xff7aa2, 0x7bdff2, 0xc8ff8c];
+      const positions = [
+        [4, 4.5, 0],
+        [-3, 3.5, 3],
+        [0, 5.2, -4],
+      ];
+      positions.forEach((p, i) => {
+        const pl = new THREE.PointLight(colors[i % colors.length], 1.2, 18, 1.8);
+        pl.position.set(p[0], p[1], p[2]);
+        scene.add(pl);
+      });
+    }
+
+    function addGround() {
+      const geo = new THREE.CircleGeometry(14, 96);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xe8f3ff,
+        roughness: 0.7,
+        metalness: 0.0,
+      });
+      const ground = new THREE.Mesh(geo, mat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = 0;
+      scene.add(ground);
+    }
+
+    function addBackgroundGlow() {
+      const geo = new THREE.SphereGeometry(40, 32, 24);
+      const mat = new THREE.MeshBasicMaterial({
+        color: 0x122034,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.BackSide,
+      });
+      const dome = new THREE.Mesh(geo, mat);
+      scene.add(dome);
+    }
+
+    function addTree() {
+      treeGroup = new THREE.Group();
+      scene.add(treeGroup);
+
+      // Trunk
+      const trunkGeo = new THREE.CylinderGeometry(0.3, 0.45, 1.2, 16);
+      const trunkMat = new THREE.MeshStandardMaterial({
+        color: 0x4b2e19,
+        roughness: 0.7,
+        metalness: 0.1,
+      });
+      const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+      trunk.position.y = 0.6;
+      treeGroup.add(trunk);
+
+      // Foliage
+      const foliageMat = new THREE.MeshStandardMaterial({
+        color: 0x0a5a3c,
+        roughness: 0.45,
+        metalness: 0.2,
+      });
+
+      const segments = [
+        { radius: 2.2, height: 2.2, y: 2.0 },
+        { radius: 1.7, height: 2.0, y: 3.2 },
+        { radius: 1.25, height: 1.8, y: 4.2 },
+        { radius: 0.8, height: 1.5, y: 5.0 },
+      ];
+
+      const foliageLevels = [];
+      segments.forEach((s) => {
+        const coneGeo = new THREE.ConeGeometry(s.radius, s.height, 48, 1, true);
+        const cone = new THREE.Mesh(coneGeo, foliageMat);
+        cone.position.y = s.y;
+        treeGroup.add(cone);
+        foliageLevels.push({
+          mesh: cone,
+          radius: s.radius,
+          y: s.y + s.height * 0.2,
+        });
+      });
+
+      // Star
+      const star = createStar();
+      treeGroup.add(star);
+
+      // Ornaments & garlands
+      addOrnaments(foliageLevels);
+      addGarlands();
+
+      treeGroup.rotation.y = Math.PI * 0.2;
+    }
+
+    function createStar() {
+      const outerRadius = 0.7;
+      const innerRadius = 0.3;
+      const spikes = 5;
+      const shape = new THREE.Shape();
+
+      for (let i = 0; i < spikes * 2; i++) {
+        const angle = (i / (spikes * 2)) * Math.PI * 2 - Math.PI / 2;
+        const r = i % 2 === 0 ? outerRadius : innerRadius;
+        const x = Math.cos(angle) * r;
+        const y = Math.sin(angle) * r;
+        if (i === 0) shape.moveTo(x, y);
+        else shape.lineTo(x, y);
+      }
+      shape.closePath();
+
+      const extrudeSettings = {
+        depth: 0.3,
+        bevelEnabled: true,
+        bevelThickness: 0.06,
+        bevelSize: 0.06,
+        bevelSegments: 2,
+        steps: 1,
+      };
+
+      const geo = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      geo.center();
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xfff7c2,
+        emissive: 0xffe08a,
+        emissiveIntensity: 1.4,
+        roughness: 0.2,
+        metalness: 0.75,
+      });
+
+      const star = new THREE.Mesh(geo, mat);
+      star.position.y = 6.3;
+      star.rotation.y = Math.PI * 0.25;
+      return star;
+    }
+
+    function addOrnaments(levels) {
+      const colors = [0xff6b81, 0xffcf5c, 0x7bdff2, 0xb19cff, 0xffffff];
+      const geo = new THREE.SphereGeometry(0.14, 16, 16);
+      const count = 140;
+
+      for (let i = 0; i < count; i++) {
+        const color = colors[i % colors.length];
+        const mat = new THREE.MeshStandardMaterial({
+          color,
+          roughness: 0.15,
+          metalness: 0.8,
+          emissive: color,
+          emissiveIntensity: 0.15,
+        });
+
+        const orb = new THREE.Mesh(geo, mat);
+        const lvl = levels[Math.floor(Math.random() * levels.length)];
+        const y = lvl.y + (Math.random() * 0.5 - 0.1);
+        const radiusAtY = lvl.radius * (0.95 - Math.random() * 0.3);
+        const angle = Math.random() * Math.PI * 2;
+        const x = Math.cos(angle) * radiusAtY;
+        const z = Math.sin(angle) * radiusAtY;
+
+        orb.position.set(x, y, z);
+        treeGroup.add(orb);
+      }
+    }
+
+    function addGarlands() {
+      const garlandMat = new THREE.MeshBasicMaterial({ color: 0xfff3b0 });
+
+      const loops = 4;
+      const turns = 6;
+      const baseRadius = 1.9;
+      const heightStart = 2.3;
+      const heightEnd = 5.3;
+
+      for (let j = 0; j < loops; j++) {
+        const points = [];
+        const phase = (j / loops) * Math.PI * 0.7;
+
+        for (let i = 0; i <= 240; i++) {
+          const t = i / 240;
+          const angle = t * Math.PI * 2 * turns + phase;
+          const radius = baseRadius * (1.0 - 0.65 * t);
+          const x = Math.cos(angle) * radius;
+          const z = Math.sin(angle) * radius;
+          const y =
+            heightStart +
+            (heightEnd - heightStart) * t +
+            Math.sin(t * Math.PI * 2 + phase) * 0.06;
+
+          points.push(new THREE.Vector3(x, y, z));
+        }
+
+        const curve = new THREE.CatmullRomCurve3(points);
+        const tubeGeo = new THREE.TubeGeometry(curve, 320, 0.03, 8, false);
+        const garland = new THREE.Mesh(tubeGeo, garlandMat);
+        treeGroup.add(garland);
+
+        const bulbGeo = new THREE.SphereGeometry(0.07, 8, 8);
+        for (let k = 0; k < 40; k++) {
+          const tt = k / 40;
+          const pos = curve.getPoint(tt);
+          const bulbColor =
+            k % 3 === 0 ? 0xff8ba7 : k % 3 === 1 ? 0x9bf6ff : 0xfff3b0;
+          const bulbMat = new THREE.MeshStandardMaterial({
+            color: bulbColor,
+            emissive: bulbColor,
+            emissiveIntensity: 0.9,
+            roughness: 0.1,
+            metalness: 0.4,
+          });
+          const bulb = new THREE.Mesh(bulbGeo, bulbMat);
+          bulb.position.copy(pos);
+          treeGroup.add(bulb);
+        }
+      }
+    }
+
+    function addSnow() {
+      const count = 2500;
+      const geo = new THREE.BufferGeometry();
+      const positions = new Float32Array(count * 3);
+      const radius = 25;
+
+      for (let i = 0; i < count; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const r = Math.sqrt(Math.random()) * radius;
+        const x = Math.cos(angle) * r;
+        const z = Math.sin(angle) * r;
+        const y = Math.random() * 16 + 3;
+
+        positions[i * 3 + 0] = x;
+        positions[i * 3 + 1] = y;
+        positions[i * 3 + 2] = z;
+      }
+
+      geo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+      const mat = new THREE.PointsMaterial({
+        size: 0.12,
+        sizeAttenuation: true,
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.9,
+      });
+
+      snowPoints = new THREE.Points(geo, mat);
+      scene.add(snowPoints);
+    }
+
+    function updateSnow(delta) {
+      if (!snowPoints) return;
+      const positions = snowPoints.geometry.attributes.position.array;
+      const count = positions.length / 3;
+      const t = performance.now() * 0.001;
+
+      for (let i = 0; i < count; i++) {
+        const idx = i * 3;
+        positions[idx + 1] -= delta * (1.0 + (i % 5) * 0.07);
+        positions[idx + 0] += Math.sin(t * 0.4 + i) * 0.002;
+        positions[idx + 2] += Math.cos(t * 0.3 + i * 1.3) * 0.002;
+
+        if (positions[idx + 1] < 0.2) {
+          positions[idx + 1] = Math.random() * 16 + 6;
+        }
+      }
+
+      snowPoints.geometry.attributes.position.needsUpdate = true;
+    }
+
+    function onWindowResize() {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const now = performance.now();
+      const elapsed = (now - timeStart) / 1000;
+
+      if (treeGroup) {
+        treeGroup.rotation.y += 0.0004 * 60; // slow continuous rotation
+        const scale = 1 + Math.sin(elapsed * 0.8) * 0.02;
+        treeGroup.scale.set(scale, scale, scale);
+      }
+
+      updateSnow(0.016);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+  </script>
+</body>
+</html>
